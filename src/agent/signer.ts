@@ -1,4 +1,4 @@
-import type { InterceptContext } from './socket';
+import type { InterceptContext } from './socket.ts';
 import {
   SSH_AGENTC_SIGN_REQUEST,
   computeFingerprint,
@@ -6,7 +6,7 @@ import {
   readSignRequest,
   writeFailure,
   writeSignResponse,
-} from './ssh-agent-protocol';
+} from './ssh-agent-protocol.ts';
 
 /**
  * Body returned by the signing API on success

@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
-import type { Intercept } from '../../src/agent/socket';
-import { SocketProxy } from '../../src/agent/socket';
+import type { Intercept } from '../../src/agent/socket.ts';
+import { SocketProxy } from '../../src/agent/socket.ts';
 
 /**
  * Wait for a single emission of an event on an emitter

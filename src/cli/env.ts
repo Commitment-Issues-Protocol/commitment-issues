@@ -1,4 +1,4 @@
-import { SOCKET_PATH } from './config';
+import { SOCKET_PATH } from './config.ts';
 
 /**
  * Print a shell export statement pointing SSH_AUTH_SOCK at the proxy

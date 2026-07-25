@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { printEnv } from './cli/env';
-import { start } from './cli/start';
+import { printEnv } from './cli/env.ts';
+import { start } from './cli/start.ts';
 
 const [, , command] = process.argv;
 

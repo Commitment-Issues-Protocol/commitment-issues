@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { signerIntercept } from '../../src/agent/signer';
-import type { InterceptContext } from '../../src/agent/socket';
+import { signerIntercept } from '../../src/agent/signer.ts';
+import type { InterceptContext } from '../../src/agent/socket.ts';
 import {
   SSH_AGENTC_REQUEST_IDENTITIES,
   SSH_AGENTC_SIGN_REQUEST,
@@ -10,7 +10,7 @@ import {
   writeFailure,
   writeSignResponse,
   writeString,
-} from '../../src/agent/ssh-agent-protocol';
+} from '../../src/agent/ssh-agent-protocol.ts';
 
 /**
  * Build a length-prefixed SSH agent message from a raw body

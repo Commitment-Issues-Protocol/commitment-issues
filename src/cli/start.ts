@@ -1,10 +1,10 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-import { signerIntercept } from '../agent/signer';
-import { SocketProxy } from '../agent/socket';
+import { signerIntercept } from '../agent/signer.ts';
+import { SocketProxy } from '../agent/socket.ts';
 
-import { API_URL, FINGERPRINT, SOCKET_PATH } from './config';
+import { API_URL, FINGERPRINT, SOCKET_PATH } from './config.ts';
 
 /**
  * Create the ssh-agent proxy socket and run it in the foreground until the

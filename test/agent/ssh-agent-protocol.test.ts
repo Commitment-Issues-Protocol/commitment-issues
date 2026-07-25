@@ -10,7 +10,7 @@ import {
   writeFailure,
   writeSignResponse,
   writeString,
-} from '../../src/agent/ssh-agent-protocol';
+} from '../../src/agent/ssh-agent-protocol.ts';
 
 /**
  * Build a length-prefixed SSH agent message from a raw body
