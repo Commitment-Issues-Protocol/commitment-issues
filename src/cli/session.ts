@@ -116,6 +116,7 @@ function launchScreen(
     '-c',
     `${exports}; exec ${exec}`,
   ]);
+  spawnSync('screen', ['-S', sessionName, '-X', 'select', 'main']);
 }
 
 /**
@@ -154,13 +155,14 @@ function session(args: string[]): void {
     launchScreen(sessionName, proxyCommand, args, proxyEnv);
   }
 
-  const attachCommand =
+  const attach =
     multiplexer === 'tmux'
-      ? `tmux attach -t ${sessionName}`
-      : `screen -r ${sessionName}`;
+      ? spawnSync('tmux', ['attach-session', '-t', `${sessionName}:main`], {
+          stdio: 'inherit',
+        })
+      : spawnSync('screen', ['-r', sessionName], { stdio: 'inherit' });
 
-  process.stdout.write(`Started ${multiplexer} session '${sessionName}'\n`);
-  process.stdout.write(`Attach with: ${attachCommand}\n`);
+  process.exitCode = attach.status ?? 0;
 }
 
 export { session };
