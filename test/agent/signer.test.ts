@@ -128,13 +128,18 @@ function createRecordingDisplayVerification(): {
   return {
     displayVerification: (url) => {
       urls.push(url);
-      return Promise.resolve();
+      return Promise.resolve(() => {
+        /* empty */
+      });
     },
     urls,
   };
 }
 
-const noopDisplayVerification: DisplayVerification = () => Promise.resolve();
+const noopDisplayVerification: DisplayVerification = () =>
+  Promise.resolve(() => {
+    /* empty */
+  });
 
 const targetKeyBlob = Buffer.from('the-target-key');
 const targetFingerprint = computeFingerprint(targetKeyBlob);

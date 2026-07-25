@@ -18,7 +18,9 @@ const displayVerification: DisplayVerification = (url) =>
   new Promise((resolve) => {
     qrcodeTerminal.generate(url, { small: true }, (qr) => {
       process.stdout.write(`${qr}\nVerify this request: ${url}\n`);
-      resolve();
+      resolve(() => {
+        console.clear();
+      });
     });
   });
 

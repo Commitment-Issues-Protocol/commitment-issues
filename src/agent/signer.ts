@@ -40,8 +40,11 @@ type VerificationLink = {
 
 /**
  * Show a verification URL to the human approving a pending sign request
+ * @param url - verification URL to display
+ * @returns resolves once shown, with a callback to dismiss it once the
+ * request has resolved
  */
-type DisplayVerification = (url: string) => Promise<void>;
+type DisplayVerification = (url: string) => Promise<() => void>;
 
 /**
  * Create signing request interceptor
@@ -171,16 +174,18 @@ async function remoteSign(
   // Show a verification link/QR code while the sign request is pending
   const verification = await fetch(`${apiURL}/verify/${requestId}`);
 
+  let dismiss = (): void => undefined;
+
   if (verification.ok) {
     const { url } = (await verification.json()) as VerificationLink;
-    await displayVerification(url);
+    dismiss = await displayVerification(url);
   }
 
   // Wait for response
   const response = await request;
 
-  // Clear the verification link/QR code now that we have a result
-  console.clear();
+  // Dismiss the verification link/QR code now that we have a result
+  dismiss();
 
   // Respond with failure if the API call didn't succeed
   if (!response.ok) {
