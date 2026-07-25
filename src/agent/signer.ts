@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+
+import qrcodeTerminal from 'qrcode-terminal';
+
 import type { InterceptContext } from './socket.ts';
 import {
   SSH_AGENTC_SIGN_REQUEST,
@@ -21,6 +25,16 @@ type APISignature = {
    * Base64-encoded raw signature bytes
    */
   signature: string;
+};
+
+/**
+ * Body returned by the verification-link endpoint
+ */
+type VerificationLink = {
+  /**
+   * URL for a human to open to verify and approve the pending sign request
+   */
+  url: string;
 };
 
 /**
@@ -102,7 +116,9 @@ async function remoteSign(
   dataToSign: Buffer,
   context: InterceptContext,
 ): Promise<void> {
-  const response = await fetch(`${apiURL}/sign`, {
+  // Make sign request
+  const requestId = randomUUID();
+  const request = fetch(`${apiURL}/sign/${requestId}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -110,6 +126,29 @@ async function remoteSign(
       data: dataToSign.toString('base64'),
     }),
   });
+
+  // Get verification link
+  // const verification = await fetch(`${apiURL}/verify/${requestId}`);
+  const verification = {
+    ok: true,
+    // eslint-disable-next-line @typescript-eslint/require-await
+    json: async () => ({
+      url: 'https://google.com',
+    }),
+  };
+
+  if (verification.ok) {
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+    const { url } = (await verification.json()) as VerificationLink;
+    process.stdout.write(`Verify this request: ${url}\n`);
+    qrcodeTerminal.generate(url, { small: true });
+  }
+
+  // Wait for response
+  const response = await request;
+
+  // Clear the verification link/QR code now that we have a result
+  console.clear();
 
   // Respond with failure if the API call didn't succeed
   if (!response.ok) {

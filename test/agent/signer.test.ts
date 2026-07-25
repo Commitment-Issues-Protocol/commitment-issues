@@ -121,8 +121,17 @@ void describe('agent/signer', () => {
     let capturedBody: unknown;
 
     globalThis.fetch = ((input: string, init?: RequestInit) => {
+      // Verification-link GET request; no body to capture
+      if (init?.method !== 'POST') {
+        return Promise.resolve(
+          new Response(JSON.stringify({ url: 'https://notarealdomain/v/1' }), {
+            status: 200,
+          }),
+        );
+      }
+
       capturedUrl = input;
-      capturedBody = JSON.parse(init?.body as string);
+      capturedBody = JSON.parse(init.body as string);
 
       return Promise.resolve(
         new Response(
@@ -146,7 +155,10 @@ void describe('agent/signer', () => {
     const result = await intercept(message, 'request', context);
 
     assert.equal(result, null);
-    assert.equal(capturedUrl, 'https://notarealdomain/sign');
+    assert.match(
+      capturedUrl ?? '',
+      /^https:\/\/notarealdomain\/sign\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u,
+    );
     assert.deepEqual(capturedBody, {
       fingerprint: targetFingerprint,
       data: dataToSign.toString('base64'),
