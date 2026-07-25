@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import type { DisplayVerification } from '../../src/agent/signer.ts';
 import { signerIntercept } from '../../src/agent/signer.ts';
 import type { InterceptContext } from '../../src/agent/socket.ts';
 import {
@@ -114,6 +115,27 @@ function parseIdentityKeyBlobs(message: Buffer): Buffer[] {
   return keyBlobs;
 }
 
+/**
+ * Create a DisplayVerification stub that records the URLs it's called with
+ * @returns the stub and the array of URLs it's been called with
+ */
+function createRecordingDisplayVerification(): {
+  displayVerification: DisplayVerification;
+  urls: string[];
+} {
+  const urls: string[] = [];
+
+  return {
+    displayVerification: (url) => {
+      urls.push(url);
+      return Promise.resolve();
+    },
+    urls,
+  };
+}
+
+const noopDisplayVerification: DisplayVerification = () => Promise.resolve();
+
 const targetKeyBlob = Buffer.from('the-target-key');
 const targetFingerprint = computeFingerprint(targetKeyBlob);
 const targetSigningKeyLine = `ssh-ed25519 ${targetKeyBlob.toString('base64')}`;
@@ -131,6 +153,7 @@ void describe('agent/signer', () => {
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      noopDisplayVerification,
     );
     const { context, responses } = createRecordingContext();
     const message = frame(Buffer.from([SSH_AGENT_SIGN_RESPONSE]));
@@ -146,6 +169,7 @@ void describe('agent/signer', () => {
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      noopDisplayVerification,
     );
     const { context } = createRecordingContext();
     const message = identitiesAnswer([
@@ -165,6 +189,7 @@ void describe('agent/signer', () => {
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      noopDisplayVerification,
     );
     const { context } = createRecordingContext();
     const message = identitiesAnswer([]);
@@ -193,6 +218,7 @@ void describe('agent/signer', () => {
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      noopDisplayVerification,
     );
     const { context, responses } = createRecordingContext();
     const message = frame(Buffer.from([SSH_AGENTC_REQUEST_IDENTITIES]));
@@ -208,6 +234,7 @@ void describe('agent/signer', () => {
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      noopDisplayVerification,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(otherKeyBlob, Buffer.from('data'));
@@ -246,10 +273,12 @@ void describe('agent/signer', () => {
       );
     }) as typeof fetch;
 
+    const { displayVerification, urls } = createRecordingDisplayVerification();
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      displayVerification,
     );
     const { context, responses } = createRecordingContext();
     const dataToSign = Buffer.from('data-to-sign');
@@ -266,6 +295,7 @@ void describe('agent/signer', () => {
       fingerprint: targetFingerprint,
       data: dataToSign.toString('base64'),
     });
+    assert.deepEqual(urls, ['https://notarealdomain/v/1']);
 
     assert.equal(responses.length, 1);
     assert.deepEqual(
@@ -281,6 +311,7 @@ void describe('agent/signer', () => {
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      noopDisplayVerification,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(targetKeyBlob, Buffer.from('data'));
@@ -293,21 +324,26 @@ void describe('agent/signer', () => {
   });
 
   void it('buffers a message split across multiple chunks', async () => {
-    globalThis.fetch = () =>
+    globalThis.fetch = ((_input: string, init?: RequestInit) =>
       Promise.resolve(
         new Response(
-          JSON.stringify({
-            format: 'ssh-ed25519',
-            signature: Buffer.from('sig').toString('base64'),
-          }),
+          JSON.stringify(
+            init?.method === 'POST'
+              ? {
+                  format: 'ssh-ed25519',
+                  signature: Buffer.from('sig').toString('base64'),
+                }
+              : { url: 'https://notarealdomain/v/1' },
+          ),
           { status: 200 },
         ),
-      );
+      )) as typeof fetch;
 
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      noopDisplayVerification,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(targetKeyBlob, Buffer.from('data-to-sign'));
@@ -327,21 +363,26 @@ void describe('agent/signer', () => {
   });
 
   void it('redirects a matching request while forwarding a non-matching one in the same chunk', async () => {
-    globalThis.fetch = () =>
+    globalThis.fetch = ((_input: string, init?: RequestInit) =>
       Promise.resolve(
         new Response(
-          JSON.stringify({
-            format: 'ssh-ed25519',
-            signature: Buffer.from('sig').toString('base64'),
-          }),
+          JSON.stringify(
+            init?.method === 'POST'
+              ? {
+                  format: 'ssh-ed25519',
+                  signature: Buffer.from('sig').toString('base64'),
+                }
+              : { url: 'https://notarealdomain/v/1' },
+          ),
           { status: 200 },
         ),
-      );
+      )) as typeof fetch;
 
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
       targetSigningKeyLine,
+      noopDisplayVerification,
     );
     const { context, responses } = createRecordingContext();
     const matching = signRequest(targetKeyBlob, Buffer.from('data'));

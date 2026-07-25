@@ -1,7 +1,5 @@
 import { randomUUID } from 'node:crypto';
 
-import qrcodeTerminal from 'qrcode-terminal';
-
 import type { InterceptContext } from './socket.ts';
 import {
   SSH_AGENTC_SIGN_REQUEST,
@@ -41,17 +39,24 @@ type VerificationLink = {
 };
 
 /**
+ * Show a verification URL to the human approving a pending sign request
+ */
+type DisplayVerification = (url: string) => Promise<void>;
+
+/**
  * Create signing request interceptor
  * @param fingerprint - key fingerprint to intercept
  * @param apiURL - api url for singing service
  * @param signingKey - public key line (authorized_keys format) to advertise
  * as an available identity, since the upstream agent never actually holds it
+ * @param displayVerification - shows the verification URL to the human approving the request
  * @returns signed, or error
  */
 function signerIntercept(
   fingerprint: string,
   apiURL: string,
   signingKey: string,
+  displayVerification: DisplayVerification,
 ) {
   // Store bytes in buffer to concat messages arriving in multiple chunks (per direction)
   let requestBuffered: Buffer = Buffer.alloc(0);
@@ -123,7 +128,13 @@ function signerIntercept(
       }
 
       // This is a sign request for the key we're interested in, redirect
-      await remoteSign(apiURL, fingerprint, dataToSign, context);
+      await remoteSign(
+        apiURL,
+        fingerprint,
+        dataToSign,
+        context,
+        displayVerification,
+      );
     }
 
     // Return if there's messages to forward, else return null
@@ -137,12 +148,14 @@ function signerIntercept(
  * @param fingerprint - fingerprint of the key to sign with
  * @param dataToSign - raw data the client wants signed
  * @param context - intercept context used to respond directly to the client
+ * @param displayVerification - shows the verification URL to the human approving the request
  */
 async function remoteSign(
   apiURL: string,
   fingerprint: string,
   dataToSign: Buffer,
   context: InterceptContext,
+  displayVerification: DisplayVerification,
 ): Promise<void> {
   // Make sign request
   const requestId = randomUUID();
@@ -155,21 +168,12 @@ async function remoteSign(
     }),
   });
 
-  // Get verification link
-  // const verification = await fetch(`${apiURL}/verify/${requestId}`);
-  const verification = {
-    ok: true,
-    // eslint-disable-next-line @typescript-eslint/require-await
-    json: async () => ({
-      url: 'https://google.com',
-    }),
-  };
+  // Show a verification link/QR code while the sign request is pending
+  const verification = await fetch(`${apiURL}/verify/${requestId}`);
 
   if (verification.ok) {
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
     const { url } = (await verification.json()) as VerificationLink;
-    process.stdout.write(`Verify this request: ${url}\n`);
-    qrcodeTerminal.generate(url, { small: true });
+    await displayVerification(url);
   }
 
   // Wait for response
@@ -190,3 +194,4 @@ async function remoteSign(
 }
 
 export { signerIntercept };
+export type { DisplayVerification };
