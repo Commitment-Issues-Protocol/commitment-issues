@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 
 import qrcodeTerminal from 'qrcode-terminal';
 
@@ -23,6 +23,56 @@ function isAvailable(command: string, versionFlag: string): boolean {
   const result = spawnSync(command, [versionFlag], { stdio: 'ignore' });
 
   return !result.error && result.status === 0;
+}
+
+/**
+ * A rewrite hook that inspects the full target argv (not just args[0], so
+ * it can see through wrappers like `npx` and account for flags that may
+ * already be present anywhere on the line) and returns the argv to launch
+ */
+type CommandRewrite = (args: string[]) => string[];
+
+/**
+ * VS Code family editors exit immediately once the window opens instead of
+ * blocking, which would make the session appear to exit right away; add
+ * --wait so the launched process sticks around until the window is closed
+ * @param args - full target argv
+ * @returns argv with `--wait` appended if the command is VS Code family and
+ * it isn't already present
+ */
+function ensureVsCodeWaits(args: string[]): string[] {
+  const VSCODE_COMMANDS = new Set([
+    'code',
+    'code-insiders',
+    'codium',
+    'codium-insiders',
+    'cursor',
+    'windsurf',
+    'trae',
+  ]);
+
+  const [command] = args;
+
+  if (command === undefined || !VSCODE_COMMANDS.has(basename(command))) {
+    return args;
+  }
+
+  return args.includes('--wait') ? args : [...args, '--wait'];
+}
+
+/**
+ * Rewrite hooks run in order over the target argv before launching. Add
+ * hooks here as we find commands whose invocation needs adjusting
+ */
+const COMMAND_REWRITES: CommandRewrite[] = [ensureVsCodeWaits];
+
+/**
+ * Run each registered rewrite hook over the target command
+ * @param args - command and arguments as given by the caller
+ * @returns the argv to launch, as rewritten by any hooks that apply
+ */
+function applyCommandRewrite(args: string[]): string[] {
+  return COMMAND_REWRITES.reduce((current, rewrite) => rewrite(current), args);
 }
 
 /**
@@ -255,11 +305,12 @@ function session(args: string[]): void {
   process.on('SIGTERM', shutdown);
 
   const proxyEnv = buildProxyEnv();
+  const targetCommand = applyCommandRewrite(args);
 
   if (multiplexer === 'tmux') {
-    launchTmux(sessionName, args, proxyEnv);
+    launchTmux(sessionName, targetCommand, proxyEnv);
   } else {
-    launchScreen(sessionName, args, proxyEnv);
+    launchScreen(sessionName, targetCommand, proxyEnv);
   }
 
   const attach =
