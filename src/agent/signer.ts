@@ -191,6 +191,11 @@ async function remoteSign(
     }),
   });
 
+  // Explicitly add a catch here so that fetch's error throw doesn't break our session
+  void request.catch(() => {
+    /* empty */
+  });
+
   // Show a verification link/QR code while the sign request is pending
   const verification = await fetch(`${apiURL}/verify/${requestId}`);
 
