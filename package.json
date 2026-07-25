@@ -9,7 +9,7 @@
     "url": "git+https://github.com/Commitment-Issues-Protocol/commitment-issues.git"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "access": "public"
   },
   "main": "dist/index.js",
   "bin": {

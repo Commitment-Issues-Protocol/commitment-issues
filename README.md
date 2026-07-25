@@ -4,7 +4,11 @@ SSH Agent for using Commitment Issues
 
 ## Install
 
-TODO
+```
+npm install -g @commitment-issues-protocol/commitment-issues
+```
+
+This provides the `commitment-issues` command.
 
 ## Usage
 
