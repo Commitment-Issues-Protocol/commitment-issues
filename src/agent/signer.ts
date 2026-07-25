@@ -182,8 +182,17 @@ async function remoteSign(
   const { url } = (await verification.json()) as VerificationLink;
   const dismiss = await displayVerification(url);
 
-  // Wait for response
-  const response = await request;
+  // Wait for response, making sure we clear the verification link/QR code
+  // even if the sign request itself errors out
+  let response: Response;
+
+  try {
+    response = await request;
+  } catch {
+    dismiss();
+    context.respond(writeFailure());
+    return;
+  }
 
   // Dismiss the verification link/QR code now that we have a result
   dismiss();

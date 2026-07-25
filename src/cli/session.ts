@@ -1,5 +1,16 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 
+import qrcodeTerminal from 'qrcode-terminal';
+
+import type { DisplayVerification } from '../agent/signer.ts';
+import { signerIntercept } from '../agent/signer.ts';
+import { SocketProxy } from '../agent/socket.ts';
+
+import { API_URL, FINGERPRINT, SIGNING_KEY, SOCKET_PATH } from './config.ts';
 import { buildProxyEnv } from './env.ts';
 
 /**
@@ -40,39 +51,37 @@ function shellQuote(value: string): string {
 }
 
 /**
- * Launch a tmux session with the proxy running in one window (inheriting
- * our real environment, so it proxies the real upstream agent) and the
- * given command in another, with the proxied environment applied only to
- * that second window via tmux's per-window `-e` flag
+ * Shell snippet that prints a file then blocks until it's removed
+ * @param filePath - path to the file to display and wait on
+ * @returns the shell command
+ */
+function catAndWaitScript(filePath: string): string {
+  const quoted = shellQuote(filePath);
+
+  return `cat ${quoted}; while [ -f ${quoted} ]; do sleep 0.5; done`;
+}
+
+/**
+ * Launch a detached tmux session running the given command, with the
+ * proxied environment applied via tmux's per-session `-e` flag
  * @param sessionName - name for the new tmux session
- * @param proxyCommand - argv that runs `commitment-issues start`
  * @param targetCommand - argv for the command the user wants to run
- * @param proxyEnv - environment overrides to apply to the target command's window
+ * @param proxyEnv - environment overrides to apply to that command
  */
 function launchTmux(
   sessionName: string,
-  proxyCommand: string[],
   targetCommand: string[],
   proxyEnv: Record<string, string>,
 ): void {
-  spawnSync('tmux', [
-    'new-session',
-    '-d',
-    '-s',
-    sessionName,
-    '-n',
-    'proxy',
-    ...proxyCommand,
-  ]);
-
   const envFlags = Object.entries(proxyEnv).flatMap(([key, value]) => [
     '-e',
     `${key}=${value}`,
   ]);
 
   spawnSync('tmux', [
-    'new-window',
-    '-t',
+    'new-session',
+    '-d',
+    '-s',
     sessionName,
     '-n',
     'main',
@@ -82,48 +91,119 @@ function launchTmux(
 }
 
 /**
- * Launch a screen session with the proxy running in one window (inheriting
- * our real environment, so it proxies the real upstream agent) and the
- * given command in another, with the proxied environment applied only to
- * that second window (screen has no per-window env flag, so it's exported
- * by a wrapping shell instead)
+ * Launch a detached screen session running the given command, with the
+ * proxied environment applied by a wrapping shell (screen has no per-window
+ * env flag)
  * @param sessionName - name for the new screen session
- * @param proxyCommand - argv that runs `commitment-issues start`
  * @param targetCommand - argv for the command the user wants to run
- * @param proxyEnv - environment overrides to apply to the target command's window
+ * @param proxyEnv - environment overrides to apply to that command
  */
 function launchScreen(
   sessionName: string,
-  proxyCommand: string[],
   targetCommand: string[],
   proxyEnv: Record<string, string>,
 ): void {
-  spawnSync('screen', ['-dmS', sessionName, ...proxyCommand]);
-
   const exports = Object.entries(proxyEnv)
     .map(([key, value]) => `export ${key}=${shellQuote(value)}`)
     .join('; ');
   const exec = targetCommand.map(shellQuote).join(' ');
 
   spawnSync('screen', [
-    '-S',
+    '-dmS',
     sessionName,
-    '-X',
-    'screen',
-    '-t',
-    'main',
     'bash',
     '-c',
     `${exports}; exec ${exec}`,
   ]);
-  spawnSync('screen', ['-S', sessionName, '-X', 'select', 'main']);
 }
 
 /**
- * Open a tmux or screen session with the ssh-agent proxy running in one
- * window and the given command running in another with the proxy's
- * environment applied, so verified commits can be made from the second
- * window while the proxy handles signing in the background
+ * Render a verification URL as a QR code
+ * @param url - URL to render
+ * @returns the rendered QR code text
+ */
+function renderQrCode(url: string): Promise<string> {
+  return new Promise((resolve) => {
+    qrcodeTerminal.generate(url, { small: true }, resolve);
+  });
+}
+
+/**
+ * Write verification content to a uniquely named temp file
+ * @param content - text to write
+ * @returns the path written to
+ */
+function writeVerificationFile(content: string): string {
+  const filePath = join(
+    tmpdir(),
+    `commitment-issues-verify-${randomUUID()}.txt`,
+  );
+  writeFileSync(filePath, content);
+
+  return filePath;
+}
+
+/**
+ * Build a DisplayVerification that pops the QR code and link up as an
+ * overlay in the tmux/screen session we launched. Our own process isn't
+ * itself running inside that session (it retains control so it can target
+ * it directly), so the multiplexer commands target it explicitly by name
+ * rather than relying on ambient TMUX/STY detection
+ * @param multiplexer - which multiplexer the target session was launched with
+ * @param sessionName - name of the launched session to pop content up in
+ * @returns a DisplayVerification usable with signerIntercept
+ */
+function createPopoverDisplay(
+  multiplexer: 'tmux' | 'screen',
+  sessionName: string,
+): DisplayVerification {
+  return async (url) => {
+    const qr = await renderQrCode(url);
+    const filePath = writeVerificationFile(
+      `${qr}\nVerify you are human: ${url}\n`,
+    );
+    const waitScript = catAndWaitScript(filePath);
+
+    if (multiplexer === 'tmux') {
+      spawn(
+        'tmux',
+        [
+          'display-popup',
+          '-t',
+          sessionName,
+          '-E',
+          '-T',
+          ' Checking for human',
+          waitScript,
+        ],
+        { stdio: 'ignore', detached: true },
+      ).unref();
+    } else {
+      spawnSync('screen', [
+        '-S',
+        sessionName,
+        '-X',
+        'screen',
+        '-t',
+        'verify',
+        'bash',
+        '-c',
+        waitScript,
+      ]);
+      spawnSync('screen', ['-S', sessionName, '-X', 'select', 'verify']);
+    }
+
+    return () => {
+      rmSync(filePath, { force: true });
+    };
+  };
+}
+
+/**
+ * Open a tmux or screen session running the given command with the proxy's
+ * environment applied, while running the ssh-agent proxy in this process
+ * (rather than as a spawned subprocess) so signing-request QR codes can be
+ * popped up directly over the launched session
  * @param args - command and arguments to launch alongside the proxy
  */
 function session(args: string[]): void {
@@ -145,24 +225,54 @@ function session(args: string[]): void {
     return;
   }
 
+  const upstreamPath = process.env['SSH_AUTH_SOCK'];
+
+  if (!upstreamPath) {
+    process.stderr.write(
+      'SSH_AUTH_SOCK is not set; no upstream ssh-agent to proxy\n',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const sessionName = `commitment-issues-${process.pid.toString()}`;
-  const proxyCommand = [process.execPath, process.argv[1] ?? '', 'start'];
+
+  mkdirSync(dirname(SOCKET_PATH), { recursive: true });
+
+  const proxy = new SocketProxy(SOCKET_PATH, upstreamPath);
+  proxy.intercept = signerIntercept(
+    FINGERPRINT,
+    API_URL,
+    SIGNING_KEY,
+    createPopoverDisplay(multiplexer, sessionName),
+  );
+
+  const shutdown = (): void => {
+    proxy.close();
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+
   const proxyEnv = buildProxyEnv();
 
   if (multiplexer === 'tmux') {
-    launchTmux(sessionName, proxyCommand, args, proxyEnv);
+    launchTmux(sessionName, args, proxyEnv);
   } else {
-    launchScreen(sessionName, proxyCommand, args, proxyEnv);
+    launchScreen(sessionName, args, proxyEnv);
   }
 
   const attach =
     multiplexer === 'tmux'
-      ? spawnSync('tmux', ['attach-session', '-t', `${sessionName}:main`], {
+      ? spawn('tmux', ['attach-session', '-t', `${sessionName}:main`], {
           stdio: 'inherit',
         })
-      : spawnSync('screen', ['-r', sessionName], { stdio: 'inherit' });
+      : spawn('screen', ['-r', sessionName], { stdio: 'inherit' });
 
-  process.exitCode = attach.status ?? 0;
+  attach.on('exit', (code) => {
+    shutdown();
+    process.exit(code ?? 0);
+  });
 }
 
 export { session };

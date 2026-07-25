@@ -15,7 +15,6 @@ import { API_URL, FINGERPRINT, SIGNING_KEY, SOCKET_PATH } from './config.ts';
  * @returns resolves once the QR code and link have been written
  */
 const displayVerification: DisplayVerification = (url) => {
-  qrcodeTerminal.setErrorLevel('L');
   qrcodeTerminal.generate(url, { small: true });
   process.stdout.write(`Verify this request: ${url}\n`);
 
