@@ -5,7 +5,7 @@ import { join } from 'node:path';
  * SHA256 fingerprint (OpenSSH display format) of the key whose sign
  * requests should be redirected to the signing API
  */
-const FINGERPRINT = 'SHA256:REPLACE_ME';
+const FINGERPRINT = 'SHA256:ppbGcvQq6Y0bhGq+0Sd9BcBaGZIy3D2C5bSl1EH2OZ4';
 
 /**
  * Base URL of the signing API; requests are POSTed to `${API_URL}/sign`
@@ -16,7 +16,8 @@ const API_URL = 'https://notarealdomain';
  * Public key line (as it would appear in an authorized_keys file) to
  * configure as git's SSH commit-signing key
  */
-const SIGNING_KEY = 'ssh-ed25519 REPLACE_ME';
+const SIGNING_KEY =
+  'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN+RPgXXP6WXhg/EIuhsicEyqVXpffCBqSidkVhpSSLc';
 
 /**
  * Committer name to record on commits made through the proxy, leaving the
