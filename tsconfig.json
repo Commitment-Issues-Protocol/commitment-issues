@@ -1,16 +1,14 @@
 {
-  "extends": [
-    "@tsconfig/strictest/tsconfig"
-  ],
+  "extends": ["@tsconfig/strictest/tsconfig"],
   "compilerOptions": {
-    "rootDir": "./src",
-    "outDir": "./dist",
     "types": ["node"],
     "target": "esnext",
     "noImplicitAny": true,
     "noImplicitThis": true,
     "incremental": true,
     "resolveJsonModule": true,
-    "allowSyntheticDefaultImports": true
-  }
+    "allowSyntheticDefaultImports": true,
+    "noEmit": true
+  },
+  "include": ["src/**/*", "test/**/*"]
 }
