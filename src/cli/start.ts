@@ -14,15 +14,13 @@ import { API_URL, FINGERPRINT, SIGNING_KEY, SOCKET_PATH } from './config.ts';
  * @param url - URL for a human to open to verify and approve the pending sign request
  * @returns resolves once the QR code and link have been written
  */
-const displayVerification: DisplayVerification = (url) =>
-  new Promise((resolve) => {
-    qrcodeTerminal.generate(url, { small: true }, (qr) => {
-      process.stdout.write(`${qr}\nVerify this request: ${url}\n`);
-      resolve(() => {
-        console.clear();
-      });
-    });
-  });
+const displayVerification: DisplayVerification = (url) => {
+  qrcodeTerminal.setErrorLevel('L');
+  qrcodeTerminal.generate(url, { small: true });
+  process.stdout.write(`Verify this request: ${url}\n`);
+
+  return console.clear;
+};
 
 /**
  * Create the ssh-agent proxy socket and run it in the foreground until the

@@ -44,7 +44,7 @@ type VerificationLink = {
  * @returns resolves once shown, with a callback to dismiss it once the
  * request has resolved
  */
-type DisplayVerification = (url: string) => Promise<() => void>;
+type DisplayVerification = (url: string) => Promise<() => void> | (() => void);
 
 /**
  * Create signing request interceptor
