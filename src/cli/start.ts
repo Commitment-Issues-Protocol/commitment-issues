@@ -26,7 +26,12 @@ function start(): void {
   const proxy = new SocketProxy(SOCKET_PATH, upstreamPath);
   proxy.intercept = signerIntercept(FINGERPRINT, API_URL);
 
+  process.stdout.write(`Session started`);
   process.stdout.write(`ssh-agent proxy listening on ${SOCKET_PATH}\n`);
+  process.stdout.write(
+    'Run this in another shell to start verified commits:\n',
+  );
+  process.stdout.write('  eval "$(ssh-agent-proxy env)"\n');
 
   const shutdown = (): void => {
     proxy.close();
