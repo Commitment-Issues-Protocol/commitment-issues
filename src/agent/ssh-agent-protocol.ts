@@ -153,13 +153,64 @@ function writeFailure(): Buffer {
   return Buffer.from([0, 0, 0, 1, SSH_AGENT_FAILURE]);
 }
 
+/**
+ * Decode the base64 key-material field of an authorized_keys-style public
+ * key line (e.g. "ssh-ed25519 AAAA... comment")
+ * @param line - public key line
+ * @returns the raw wire-format key blob
+ */
+function decodePublicKeyLine(line: string): Buffer {
+  const [, base64] = line.trim().split(/\s+/u);
+
+  return Buffer.from(base64 ?? '', 'base64');
+}
+
+/**
+ * Append an identity to an SSH_AGENT_IDENTITIES_ANSWER message
+ * @param message - full wire-format SSH_AGENT_IDENTITIES_ANSWER message
+ * @param keyBlob - raw wire-format public key blob to add
+ * @param comment - comment to associate with the added identity
+ * @returns a new full wire-format message with the identity appended
+ */
+function appendIdentity(
+  message: Buffer,
+  keyBlob: Buffer,
+  comment: string,
+): Buffer {
+  const body = message.subarray(4);
+  const count = body.readUInt32BE(1);
+  const identities = body.subarray(5);
+
+  const newCount = Buffer.alloc(4);
+  newCount.writeUInt32BE(count + 1, 0);
+
+  const addition = Buffer.concat([
+    writeString(keyBlob),
+    writeString(Buffer.from(comment, 'utf8')),
+  ]);
+
+  const newBody = Buffer.concat([
+    Buffer.from([SSH_AGENT_IDENTITIES_ANSWER]),
+    newCount,
+    identities,
+    addition,
+  ]);
+
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(newBody.length, 0);
+
+  return Buffer.concat([length, newBody]);
+}
+
 export {
   SSH_AGENT_FAILURE,
   SSH_AGENT_IDENTITIES_ANSWER,
   SSH_AGENT_SIGN_RESPONSE,
   SSH_AGENTC_REQUEST_IDENTITIES,
   SSH_AGENTC_SIGN_REQUEST,
+  appendIdentity,
   computeFingerprint,
+  decodePublicKeyLine,
   extractMessages,
   readSignRequest,
   readString,

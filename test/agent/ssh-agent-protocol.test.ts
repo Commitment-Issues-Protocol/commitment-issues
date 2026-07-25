@@ -2,8 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  SSH_AGENT_IDENTITIES_ANSWER,
   SSH_AGENT_SIGN_RESPONSE,
+  appendIdentity,
   computeFingerprint,
+  decodePublicKeyLine,
   extractMessages,
   readSignRequest,
   readString,
@@ -22,6 +25,33 @@ function frame(body: Buffer): Buffer {
   length.writeUInt32BE(body.length, 0);
 
   return Buffer.concat([length, body]);
+}
+
+/**
+ * Build a full SSH_AGENT_IDENTITIES_ANSWER message
+ * @param identities - key blob/comment pairs to list
+ * @returns the full wire-format message, including its length prefix
+ */
+function identitiesAnswer(
+  identities: { keyBlob: Buffer; comment: string }[],
+): Buffer {
+  const count = Buffer.alloc(4);
+  count.writeUInt32BE(identities.length, 0);
+
+  const entries = identities.map(({ keyBlob, comment }) =>
+    Buffer.concat([
+      writeString(keyBlob),
+      writeString(Buffer.from(comment, 'utf8')),
+    ]),
+  );
+
+  return frame(
+    Buffer.concat([
+      Buffer.from([SSH_AGENT_IDENTITIES_ANSWER]),
+      count,
+      ...entries,
+    ]),
+  );
 }
 
 void describe('agent/ssh-agent-protocol', () => {
@@ -153,6 +183,64 @@ void describe('agent/ssh-agent-protocol', () => {
 
       assert.equal(message.length, 5);
       assert.equal(message.readUInt32BE(0), 1);
+    });
+  });
+
+  void describe('decodePublicKeyLine', () => {
+    void it('decodes the base64 field of an authorized_keys-style line', () => {
+      const keyBlob = Buffer.from('a-key-blob');
+      const line = `ssh-ed25519 ${keyBlob.toString('base64')} a comment`;
+
+      assert.deepEqual(decodePublicKeyLine(line), keyBlob);
+    });
+
+    void it('decodes a line with no trailing comment', () => {
+      const keyBlob = Buffer.from('another-key-blob');
+      const line = `ssh-ed25519 ${keyBlob.toString('base64')}`;
+
+      assert.deepEqual(decodePublicKeyLine(line), keyBlob);
+    });
+  });
+
+  void describe('appendIdentity', () => {
+    void it('adds an identity to a message with none listed yet', () => {
+      const keyBlob = Buffer.from('new-key-blob');
+      const message = identitiesAnswer([]);
+
+      const result = appendIdentity(message, keyBlob, 'a comment');
+
+      assert.equal(result.readUInt32BE(0), result.length - 4);
+      assert.equal(result.readUInt8(4), SSH_AGENT_IDENTITIES_ANSWER);
+      assert.equal(result.readUInt32BE(5), 1);
+
+      const { value: resultKeyBlob, next } = readString(result, 9);
+      const { value: comment } = readString(result, next);
+
+      assert.deepEqual(resultKeyBlob, keyBlob);
+      assert.equal(comment.toString(), 'a comment');
+    });
+
+    void it('preserves existing identities and appends the new one after them', () => {
+      const existingKeyBlob = Buffer.from('existing-key-blob');
+      const newKeyBlob = Buffer.from('new-key-blob');
+      const message = identitiesAnswer([
+        { keyBlob: existingKeyBlob, comment: 'existing comment' },
+      ]);
+
+      const result = appendIdentity(message, newKeyBlob, 'new comment');
+
+      assert.equal(result.readUInt32BE(5), 2);
+
+      const first = readString(result, 9);
+      const firstComment = readString(result, first.next);
+      const second = readString(result, firstComment.next);
+      const secondComment = readString(result, second.next);
+
+      assert.deepEqual(first.value, existingKeyBlob);
+      assert.equal(firstComment.value.toString(), 'existing comment');
+      assert.deepEqual(second.value, newKeyBlob);
+      assert.equal(secondComment.value.toString(), 'new comment');
+      assert.equal(secondComment.next, result.length);
     });
   });
 });
