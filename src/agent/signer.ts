@@ -5,7 +5,10 @@ import qrcodeTerminal from 'qrcode-terminal';
 import type { InterceptContext } from './socket.ts';
 import {
   SSH_AGENTC_SIGN_REQUEST,
+  SSH_AGENT_IDENTITIES_ANSWER,
+  appendIdentity,
   computeFingerprint,
+  decodePublicKeyLine,
   extractMessages,
   readSignRequest,
   writeFailure,
@@ -41,11 +44,21 @@ type VerificationLink = {
  * Create signing request interceptor
  * @param fingerprint - key fingerprint to intercept
  * @param apiURL - api url for singing service
+ * @param signingKey - public key line (authorized_keys format) to advertise
+ * as an available identity, since the upstream agent never actually holds it
  * @returns signed, or error
  */
-function signerIntercept(fingerprint: string, apiURL: string) {
-  // Store bytes in buffer to concat messages arriving in multiple chunks
-  let buffered: Buffer = Buffer.alloc(0);
+function signerIntercept(
+  fingerprint: string,
+  apiURL: string,
+  signingKey: string,
+) {
+  // Store bytes in buffer to concat messages arriving in multiple chunks (per direction)
+  let requestBuffered: Buffer = Buffer.alloc(0);
+  let responseBuffered: Buffer = Buffer.alloc(0);
+
+  // Decode once so it can be added to every identity listing
+  const signingKeyBlob = decodePublicKeyLine(signingKey);
 
   // Return interceptor
   return async (
@@ -53,19 +66,34 @@ function signerIntercept(fingerprint: string, apiURL: string) {
     direction: 'request' | 'response',
     context: InterceptContext,
   ): Promise<Buffer | null> => {
-    // No-op for responses from upstream socket target
+    // Inject our identity into identity-listing responses coming back from upstream
     if (direction === 'response') {
-      return data;
+      responseBuffered = Buffer.concat([responseBuffered, data]);
+
+      const { messages, remainder } = extractMessages(responseBuffered);
+      responseBuffered = remainder;
+
+      const forwarded: Buffer[] = messages.map((message) => {
+        const isIdentitiesAnswer =
+          message.length > 4 &&
+          message.readUInt8(4) === SSH_AGENT_IDENTITIES_ANSWER;
+
+        return isIdentitiesAnswer
+          ? appendIdentity(message, signingKeyBlob, fingerprint)
+          : message;
+      });
+
+      return forwarded.length > 0 ? Buffer.concat(forwarded) : null;
     }
 
     // Concatonate to buffer
-    buffered = Buffer.concat([buffered, data]);
+    requestBuffered = Buffer.concat([requestBuffered, data]);
 
     // Extract compelted messages
-    const { messages, remainder } = extractMessages(buffered);
+    const { messages, remainder } = extractMessages(requestBuffered);
 
     // Write the remainder of the bytes back to the buffer
-    buffered = remainder;
+    requestBuffered = remainder;
 
     // Store messages we're going to forward
     const forwarded: Buffer[] = [];

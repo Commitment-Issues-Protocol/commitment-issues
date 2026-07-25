@@ -6,7 +6,10 @@ import type { InterceptContext } from '../../src/agent/socket.ts';
 import {
   SSH_AGENTC_REQUEST_IDENTITIES,
   SSH_AGENTC_SIGN_REQUEST,
+  SSH_AGENT_IDENTITIES_ANSWER,
+  SSH_AGENT_SIGN_RESPONSE,
   computeFingerprint,
+  readString,
   writeFailure,
   writeSignResponse,
   writeString,
@@ -63,8 +66,57 @@ function createRecordingContext(): {
   };
 }
 
+/**
+ * Build a full SSH_AGENT_IDENTITIES_ANSWER message
+ * @param identities - key blob/comment pairs to list
+ * @returns the full wire-format message, including its length prefix
+ */
+function identitiesAnswer(
+  identities: { keyBlob: Buffer; comment: string }[],
+): Buffer {
+  const count = Buffer.alloc(4);
+  count.writeUInt32BE(identities.length, 0);
+
+  const entries = identities.map(({ keyBlob, comment }) =>
+    Buffer.concat([
+      writeString(keyBlob),
+      writeString(Buffer.from(comment, 'utf8')),
+    ]),
+  );
+
+  return frame(
+    Buffer.concat([
+      Buffer.from([SSH_AGENT_IDENTITIES_ANSWER]),
+      count,
+      ...entries,
+    ]),
+  );
+}
+
+/**
+ * Parse an SSH_AGENT_IDENTITIES_ANSWER message into its key blobs
+ * @param message - full wire-format SSH_AGENT_IDENTITIES_ANSWER message
+ * @returns the key blob of each listed identity, in order
+ */
+function parseIdentityKeyBlobs(message: Buffer): Buffer[] {
+  const count = message.readUInt32BE(5);
+  const keyBlobs: Buffer[] = [];
+  let offset = 9;
+
+  for (let index = 0; index < count; index += 1) {
+    const keyBlob = readString(message, offset);
+    const comment = readString(message, keyBlob.next);
+
+    keyBlobs.push(keyBlob.value);
+    offset = comment.next;
+  }
+
+  return keyBlobs;
+}
+
 const targetKeyBlob = Buffer.from('the-target-key');
 const targetFingerprint = computeFingerprint(targetKeyBlob);
+const targetSigningKeyLine = `ssh-ed25519 ${targetKeyBlob.toString('base64')}`;
 const otherKeyBlob = Buffer.from('some-other-key');
 
 void describe('agent/signer', () => {
@@ -74,24 +126,73 @@ void describe('agent/signer', () => {
     globalThis.fetch = originalFetch;
   });
 
-  void it('passes response-direction data through unchanged', async () => {
+  void it('passes non-identities-answer response messages through unchanged', async () => {
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
+      targetSigningKeyLine,
     );
     const { context, responses } = createRecordingContext();
-    const data = Buffer.from('anything');
+    const message = frame(Buffer.from([SSH_AGENT_SIGN_RESPONSE]));
 
-    const result = await intercept(data, 'response', context);
+    const result = await intercept(message, 'response', context);
 
-    assert.deepEqual(result, data);
+    assert.deepEqual(result, message);
     assert.equal(responses.length, 0);
+  });
+
+  void it('injects the signing key into identity-listing responses', async () => {
+    const intercept = signerIntercept(
+      targetFingerprint,
+      'https://notarealdomain',
+      targetSigningKeyLine,
+    );
+    const { context } = createRecordingContext();
+    const message = identitiesAnswer([
+      { keyBlob: otherKeyBlob, comment: 'existing-key' },
+    ]);
+
+    const result = await intercept(message, 'response', context);
+
+    assert.notEqual(result, null);
+    const keyBlobs = parseIdentityKeyBlobs(result ?? Buffer.alloc(0));
+    assert.equal(keyBlobs.length, 2);
+    assert.deepEqual(keyBlobs, [otherKeyBlob, targetKeyBlob]);
+  });
+
+  void it('buffers an identities-answer response split across multiple chunks', async () => {
+    const intercept = signerIntercept(
+      targetFingerprint,
+      'https://notarealdomain',
+      targetSigningKeyLine,
+    );
+    const { context } = createRecordingContext();
+    const message = identitiesAnswer([]);
+    const split = Math.floor(message.length / 2);
+
+    const first = await intercept(
+      message.subarray(0, split),
+      'response',
+      context,
+    );
+    assert.equal(first, null);
+
+    const second = await intercept(
+      message.subarray(split),
+      'response',
+      context,
+    );
+    assert.notEqual(second, null);
+    assert.deepEqual(parseIdentityKeyBlobs(second ?? Buffer.alloc(0)), [
+      targetKeyBlob,
+    ]);
   });
 
   void it('forwards non-sign-request messages unchanged', async () => {
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
+      targetSigningKeyLine,
     );
     const { context, responses } = createRecordingContext();
     const message = frame(Buffer.from([SSH_AGENTC_REQUEST_IDENTITIES]));
@@ -106,6 +207,7 @@ void describe('agent/signer', () => {
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
+      targetSigningKeyLine,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(otherKeyBlob, Buffer.from('data'));
@@ -147,6 +249,7 @@ void describe('agent/signer', () => {
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
+      targetSigningKeyLine,
     );
     const { context, responses } = createRecordingContext();
     const dataToSign = Buffer.from('data-to-sign');
@@ -177,6 +280,7 @@ void describe('agent/signer', () => {
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
+      targetSigningKeyLine,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(targetKeyBlob, Buffer.from('data'));
@@ -203,6 +307,7 @@ void describe('agent/signer', () => {
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
+      targetSigningKeyLine,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(targetKeyBlob, Buffer.from('data-to-sign'));
@@ -236,6 +341,7 @@ void describe('agent/signer', () => {
     const intercept = signerIntercept(
       targetFingerprint,
       'https://notarealdomain',
+      targetSigningKeyLine,
     );
     const { context, responses } = createRecordingContext();
     const matching = signRequest(targetKeyBlob, Buffer.from('data'));
