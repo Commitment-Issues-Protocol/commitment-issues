@@ -1,6 +1,6 @@
-# PLACEHOLDER_NAME SSH-Agent
+# Commitment Issues SSH-Agent
 
-SSH Agent for using PLACEHOLDER_NAME
+SSH Agent for using Commitment Issues
 
 ## Install
 
