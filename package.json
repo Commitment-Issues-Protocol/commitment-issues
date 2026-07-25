@@ -1,19 +1,19 @@
 {
-  "name": "@commitment-issues-protocol/ssh-agent",
+  "name": "@commitment-issues-protocol/commitment-issues",
   "version": "0.0.0",
   "description": "",
   "license": "UNLICENSED",
   "author": "",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Commitment-Issues-Protocol/ssh-agent.git"
+    "url": "git+https://github.com/Commitment-Issues-Protocol/commitment-issues.git"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
   },
   "main": "dist/index.js",
   "bin": {
-    "ssh-agent-proxy": "dist/index.js"
+    "commitment-issues": "dist/index.js"
   },
   "type": "module",
   "scripts": {

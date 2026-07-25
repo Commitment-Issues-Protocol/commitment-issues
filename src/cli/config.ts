@@ -28,6 +28,6 @@ const COMMITTER_NAME = 'Reviewed By Human';
 /**
  * Path the proxy's own unix socket listens on
  */
-const SOCKET_PATH = join(homedir(), '.ssh-agent-proxy', 'agent.sock');
+const SOCKET_PATH = join(homedir(), '.commitment-issues', 'agent.sock');
 
 export { API_URL, COMMITTER_NAME, FINGERPRINT, SIGNING_KEY, SOCKET_PATH };

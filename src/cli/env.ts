@@ -6,7 +6,7 @@ import { COMMITTER_NAME, SIGNING_KEY, SOCKET_PATH } from './config.ts';
  * processes that inherit this environment) to sign commits with the
  * proxied key and record the committer as {@link COMMITTER_NAME} while
  * leaving the author identity untouched, meant to be eval'd in the current
- * login session (e.g. `eval "$(ssh-agent-proxy env)"`)
+ * login session (e.g. `eval "$(commitment-issues env)"`)
  */
 function printEnv(): void {
   process.stdout.write(`export SSH_AUTH_SOCK=${SOCKET_PATH}\n`);

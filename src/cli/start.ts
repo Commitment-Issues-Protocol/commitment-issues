@@ -31,7 +31,7 @@ function start(): void {
   process.stdout.write(
     'Run this in another shell to start verified commits:\n',
   );
-  process.stdout.write('  eval "$(ssh-agent-proxy env)"\n');
+  process.stdout.write('  eval "$(commitment-issues env)"\n');
 
   const shutdown = (): void => {
     proxy.close();

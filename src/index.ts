@@ -12,6 +12,6 @@ switch (command) {
     printEnv();
     break;
   default:
-    process.stderr.write('Usage: ssh-agent-proxy <start|env>\n');
+    process.stderr.write('Usage: commitment-issues <start|env>\n');
     process.exitCode = 1;
 }
