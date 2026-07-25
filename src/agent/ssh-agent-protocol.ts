@@ -80,7 +80,7 @@ function extractMessages(buffer: Buffer): {
 
 /**
  * Compute the SHA256 fingerprint of an SSH public key blob, in OpenSSH's
- * "SHA256:&lt;base64&gt;" display format
+ * "SHA256:...." display format
  * @param keyBlob - raw wire-format public key blob
  * @returns the fingerprint string
  */
