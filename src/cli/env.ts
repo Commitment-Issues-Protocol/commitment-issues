@@ -1,25 +1,33 @@
 import { COMMITTER_NAME, SIGNING_KEY, SOCKET_PATH } from './config.ts';
 
 /**
- * Print shell export statements that point SSH_AUTH_SOCK at the proxy
+ * Build the environment variables that point SSH_AUTH_SOCK at the proxy
  * socket and configure git (via GIT_CONFIG_* overrides, scoped to
  * processes that inherit this environment) to sign commits with the
- * proxied key and record the committer as {@link COMMITTER_NAME} while
- * leaving the author identity untouched, meant to be eval'd in the current
- * login session (e.g. `eval "$(commitment-issues env)"`)
+ * proxied key and record the committer as {@link COMMITTER_NAME}, while
+ * leaving the author identity untouched
+ * @returns a plain object of environment variable name/value pairs
  */
-function printEnv(): void {
-  process.stdout.write(`export SSH_AUTH_SOCK=${SOCKET_PATH}\n`);
-  process.stdout.write('export GIT_CONFIG_COUNT=2\n');
-  process.stdout.write('export GIT_CONFIG_KEY_0=gpg.format\n');
-  process.stdout.write('export GIT_CONFIG_VALUE_0=ssh\n');
-  process.stdout.write('export GIT_CONFIG_KEY_1=user.signingkey\n');
-  process.stdout.write(
-    `export GIT_CONFIG_VALUE_1=${JSON.stringify(`key::${SIGNING_KEY}`)}\n`,
-  );
-  process.stdout.write(
-    `export GIT_COMMITTER_NAME=${JSON.stringify(COMMITTER_NAME)}\n`,
-  );
+function buildProxyEnv(): Record<string, string> {
+  return {
+    SSH_AUTH_SOCK: SOCKET_PATH,
+    GIT_CONFIG_COUNT: '2',
+    GIT_CONFIG_KEY_0: 'gpg.format',
+    GIT_CONFIG_VALUE_0: 'ssh',
+    GIT_CONFIG_KEY_1: 'user.signingkey',
+    GIT_CONFIG_VALUE_1: `key::${SIGNING_KEY}`,
+    GIT_COMMITTER_NAME: COMMITTER_NAME,
+  };
 }
 
-export { printEnv };
+/**
+ * Print shell export statements built from {@link buildProxyEnv}, meant to
+ * be eval'd in the current login session (e.g. `eval "$(commitment-issues env)"`)
+ */
+function printEnv(): void {
+  for (const [key, value] of Object.entries(buildProxyEnv())) {
+    process.stdout.write(`export ${key}=${JSON.stringify(value)}\n`);
+  }
+}
+
+export { buildProxyEnv, printEnv };
