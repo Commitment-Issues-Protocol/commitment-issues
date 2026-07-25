@@ -37,7 +37,7 @@ type Intercept = (
  * Proxies unix socket data with optional intercept
  */
 class SocketProxy {
-  upstreamPath: string;
+  upstreamPath: string | undefined;
   socket: net.Server;
 
   /**
@@ -48,9 +48,10 @@ class SocketProxy {
   /**
    * Create Socket Proxy
    * @param path - local socket path
-   * @param upstreamPath - proxy target path
+   * @param upstreamPath - proxy target path; omit to run standalone with no
+   * upstream agent, relying entirely on the intercept to answer every message
    */
-  constructor(path: string, upstreamPath: string) {
+  constructor(path: string, upstreamPath?: string) {
     // Override target path if exists
     if (existsSync(path)) {
       unlinkSync(path);
@@ -72,6 +73,12 @@ class SocketProxy {
    * @param client - client connection socket
    */
   private onConnect(client: net.Socket) {
+    // With no upstream, the intercept must answer every message itself
+    if (!this.upstreamPath) {
+      this.forwardStandalone(client);
+      return;
+    }
+
     // Connect to upstream (seperate connection per client)
     const upstream = net.createConnection(this.upstreamPath);
 
@@ -91,6 +98,37 @@ class SocketProxy {
     });
     upstream.on('close', () => {
       client.destroy();
+    });
+  }
+
+  /**
+   * Handle a client connection with no upstream agent to forward to; the
+   * intercept is responsible for answering every message via context.respond
+   * @param client - client connection socket
+   */
+  private forwardStandalone(client: net.Socket): void {
+    client.on('data', (data: Buffer) => {
+      if (!this.intercept) {
+        client.destroy();
+        return;
+      }
+
+      client.pause();
+
+      const context: InterceptContext = {
+        respond: (response) => {
+          client.write(response);
+        },
+      };
+
+      void Promise.resolve(this.intercept(data, 'request', context))
+        .then(() => {
+          client.resume();
+        })
+        .catch((error: unknown) => {
+          console.error('intercept error:', error);
+          client.destroy();
+        });
     });
   }
 

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { InterceptContext } from './socket.ts';
 import {
+  SSH_AGENTC_REQUEST_IDENTITIES,
   SSH_AGENTC_SIGN_REQUEST,
   SSH_AGENT_IDENTITIES_ANSWER,
   appendIdentity,
@@ -10,6 +11,7 @@ import {
   extractMessages,
   readSignRequest,
   writeFailure,
+  writeIdentitiesAnswer,
   writeSignResponse,
 } from './ssh-agent-protocol.ts';
 
@@ -53,6 +55,9 @@ type DisplayVerification = (url: string) => Promise<() => void> | (() => void);
  * @param signingKey - public key line (authorized_keys format) to advertise
  * as an available identity, since the upstream agent never actually holds it
  * @param displayVerification - shows the verification URL to the human approving the request
+ * @param standalone - true when there's no upstream agent to fall back to;
+ * identity listings and non-matching sign requests are answered directly
+ * instead of being forwarded (every other message type just fails)
  * @returns signed, or error
  */
 function signerIntercept(
@@ -60,6 +65,7 @@ function signerIntercept(
   apiURL: string,
   signingKey: string,
   displayVerification: DisplayVerification,
+  standalone: boolean,
 ) {
   // Store bytes in buffer to concat messages arriving in multiple chunks (per direction)
   let requestBuffered: Buffer = Buffer.alloc(0);
@@ -108,36 +114,50 @@ function signerIntercept(
 
     // Loop through all the completed messages we have now
     for (const message of messages) {
-      // Check if is sign request
-      const isSignRequest =
-        message.length > 4 && message.readUInt8(4) === SSH_AGENTC_SIGN_REQUEST;
+      const type = message.length > 4 ? message.readUInt8(4) : undefined;
 
-      // Push to forwarded messages if is not and continue
-      if (!isSignRequest) {
-        forwarded.push(message);
+      // Sign requests: handle ourselves if it's for our key, otherwise
+      // forward when we have an upstream, or fail when we don't
+      if (type === SSH_AGENTC_SIGN_REQUEST) {
+        const { keyBlob, data: dataToSign } = readSignRequest(
+          message.subarray(5),
+        );
+        const keyFingerprint = computeFingerprint(keyBlob);
+
+        if (keyFingerprint === fingerprint) {
+          await remoteSign(
+            apiURL,
+            fingerprint,
+            dataToSign,
+            context,
+            displayVerification,
+          );
+        } else if (standalone) {
+          context.respond(writeFailure());
+        } else {
+          forwarded.push(message);
+        }
+
         continue;
       }
 
-      // Else, read sign request
-      const { keyBlob, data: dataToSign } = readSignRequest(
-        message.subarray(5),
-      );
-
-      // If sign request is not for the key fingerprint we're after, push to forward and continue
-      const keyFingerprint = computeFingerprint(keyBlob);
-      if (keyFingerprint !== fingerprint) {
-        forwarded.push(message);
+      // Identity listing with no upstream: answer with just our own key
+      if (type === SSH_AGENTC_REQUEST_IDENTITIES && standalone) {
+        context.respond(
+          writeIdentitiesAnswer([
+            { keyBlob: signingKeyBlob, comment: fingerprint },
+          ]),
+        );
         continue;
       }
 
-      // This is a sign request for the key we're interested in, redirect
-      await remoteSign(
-        apiURL,
-        fingerprint,
-        dataToSign,
-        context,
-        displayVerification,
-      );
+      // Anything else: forward when we have an upstream, or fail when we don't
+      if (standalone) {
+        context.respond(writeFailure());
+        continue;
+      }
+
+      forwarded.push(message);
     }
 
     // Return if there's messages to forward, else return null

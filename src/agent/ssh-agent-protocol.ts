@@ -202,6 +202,49 @@ function appendIdentity(
   return Buffer.concat([length, newBody]);
 }
 
+/**
+ * A single identity as listed in an SSH_AGENT_IDENTITIES_ANSWER message
+ */
+type Identity = {
+  /**
+   * Raw wire-format public key blob
+   */
+  keyBlob: Buffer;
+
+  /**
+   * Comment associated with the identity
+   */
+  comment: string;
+};
+
+/**
+ * Build an SSH_AGENT_IDENTITIES_ANSWER message listing the given identities
+ * @param identities - key blob/comment pairs to list
+ * @returns the full wire-format message, including its length prefix
+ */
+function writeIdentitiesAnswer(identities: Identity[]): Buffer {
+  const count = Buffer.alloc(4);
+  count.writeUInt32BE(identities.length, 0);
+
+  const entries = identities.map(({ keyBlob, comment }) =>
+    Buffer.concat([
+      writeString(keyBlob),
+      writeString(Buffer.from(comment, 'utf8')),
+    ]),
+  );
+
+  const body = Buffer.concat([
+    Buffer.from([SSH_AGENT_IDENTITIES_ANSWER]),
+    count,
+    ...entries,
+  ]);
+
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(body.length, 0);
+
+  return Buffer.concat([length, body]);
+}
+
 export {
   SSH_AGENT_FAILURE,
   SSH_AGENT_IDENTITIES_ANSWER,
@@ -215,7 +258,8 @@ export {
   readSignRequest,
   readString,
   writeFailure,
+  writeIdentitiesAnswer,
   writeSignResponse,
   writeString,
 };
-export type { SignRequest };
+export type { Identity, SignRequest };
