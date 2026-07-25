@@ -19,8 +19,14 @@ const API_URL = 'https://notarealdomain';
 const SIGNING_KEY = 'ssh-ed25519 REPLACE_ME';
 
 /**
+ * Committer name to record on commits made through the proxy, leaving the
+ * author identity untouched
+ */
+const COMMITTER_NAME = 'Reviewed By Human';
+
+/**
  * Path the proxy's own unix socket listens on
  */
 const SOCKET_PATH = join(homedir(), '.ssh-agent-proxy', 'agent.sock');
 
-export { API_URL, FINGERPRINT, SIGNING_KEY, SOCKET_PATH };
+export { API_URL, COMMITTER_NAME, FINGERPRINT, SIGNING_KEY, SOCKET_PATH };
