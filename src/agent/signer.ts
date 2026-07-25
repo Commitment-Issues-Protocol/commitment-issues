@@ -174,12 +174,13 @@ async function remoteSign(
   // Show a verification link/QR code while the sign request is pending
   const verification = await fetch(`${apiURL}/verify/${requestId}`);
 
-  let dismiss = (): void => undefined;
-
-  if (verification.ok) {
-    const { url } = (await verification.json()) as VerificationLink;
-    dismiss = await displayVerification(url);
+  if (!verification.ok) {
+    context.respond(writeFailure());
+    return;
   }
+
+  const { url } = (await verification.json()) as VerificationLink;
+  const dismiss = await displayVerification(url);
 
   // Wait for response
   const response = await request;
