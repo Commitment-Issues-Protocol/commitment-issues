@@ -1,0 +1,39 @@
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+import { signerIntercept } from '../agent/signer';
+import { SocketProxy } from '../agent/socket';
+
+import { API_URL, FINGERPRINT, SOCKET_PATH } from './config';
+
+/**
+ * Create the ssh-agent proxy socket and run it in the foreground until the
+ * process is signalled to stop
+ */
+function start(): void {
+  const upstreamPath = process.env['SSH_AUTH_SOCK'];
+
+  if (!upstreamPath) {
+    process.stderr.write(
+      'SSH_AUTH_SOCK is not set; no upstream ssh-agent to proxy\n',
+    );
+    process.exitCode = 1;
+    return;
+  }
+
+  mkdirSync(dirname(SOCKET_PATH), { recursive: true });
+
+  const proxy = new SocketProxy(SOCKET_PATH, upstreamPath);
+  proxy.intercept = signerIntercept(FINGERPRINT, API_URL);
+
+  process.stdout.write(`ssh-agent proxy listening on ${SOCKET_PATH}\n`);
+
+  const shutdown = (): void => {
+    proxy.close();
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+export { start };
