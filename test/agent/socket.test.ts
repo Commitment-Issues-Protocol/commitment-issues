@@ -43,6 +43,7 @@ void describe('agent/socket', () => {
   let proxyPath: string;
   let upstreamPath: string;
   let upstreamServer: net.Server;
+  let upstreamReceived: string[];
   let socketProxy: SocketProxy;
   let client: net.Socket;
 
@@ -53,8 +54,10 @@ void describe('agent/socket', () => {
     upstreamPath = path.join(dir, 'upstream.sock');
 
     // Create upstream socket that doubles the number it receives
+    upstreamReceived = [];
     upstreamServer = net.createServer((connection) => {
       connection.on('data', (data: Buffer) => {
+        upstreamReceived.push(data.toString('ascii'));
         connection.write((parseInt(data.toString('ascii')) * 2).toString(10));
       });
     });
@@ -112,5 +115,23 @@ void describe('agent/socket', () => {
     socketProxy.intercept = interceptDoubleResponse;
     client.write('10');
     assert.equal((await waitForData(client)).toString(), '21');
+  });
+
+  void it('allows the intercept to respond directly and swallow the request', async () => {
+    // Answer request-direction data directly, never forwarding it upstream
+    const interceptRespondDirectly: Intercept = (data, direction, context) => {
+      if (direction === 'request') {
+        context.respond(Buffer.from('42'));
+        return null;
+      }
+      return data;
+    };
+
+    socketProxy.intercept = interceptRespondDirectly;
+    client.write('10');
+    assert.equal((await waitForData(client)).toString(), '42');
+
+    // Upstream should never have seen the swallowed request
+    assert.deepEqual(upstreamReceived, []);
   });
 });
