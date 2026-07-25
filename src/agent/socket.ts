@@ -7,15 +7,31 @@ import net from 'node:net';
 type InterceptDirection = 'request' | 'response';
 
 /**
- * Callback used to inspect and rewrite data as it passes through the proxy
+ * Context passed to an intercept callback for the current chunk
+ */
+type InterceptContext = {
+  /**
+   * Write data directly back to whichever side sent the current chunk,
+   * bypassing the other side of the proxied connection entirely
+   * @param data - data to write back to the sender
+   */
+  respond: (data: Buffer) => void;
+};
+
+/**
+ * Callback used to inspect and rewrite data as it passes through the proxy.
+ * Returning null swallows the chunk (nothing is forwarded to the other
+ * side) -- typically paired with context.respond to answer the sender directly.
  * @param data - raw data chunk read from the source socket
  * @param direction - direction the data is flowing
- * @returns the data to forward to the destination socket
+ * @param context - helpers for the current chunk, e.g. responding directly to the sender
+ * @returns the data to forward to the destination socket, or null to forward nothing
  */
 type Intercept = (
   data: Buffer,
   direction: InterceptDirection,
-) => Buffer | Promise<Buffer>;
+  context: InterceptContext,
+) => Buffer | null | Promise<Buffer | null>;
 
 /**
  * Proxies unix socket data with optional intercept
@@ -99,14 +115,27 @@ class SocketProxy {
       // Pause source to avoid race condition data ordering issues
       source.pause();
 
+      // Allow interceptor to respond directly to requests
+      const context: InterceptContext = {
+        respond: (response) => {
+          source.write(response);
+        },
+      };
+
       // Pass the data through intercept, writing the output
       // Promise.resolve to handle both sync and async
-      void Promise.resolve(this.intercept(data, direction)).then(
-        (transformed) => {
-          target.write(transformed);
+      void Promise.resolve(this.intercept(data, direction, context))
+        .then((transformed) => {
+          if (transformed) {
+            target.write(transformed);
+          }
           source.resume();
-        },
-      );
+        })
+        .catch((error: unknown) => {
+          console.error('intercept error:', error);
+          source.destroy();
+          target.destroy();
+        });
     });
   }
 
@@ -119,4 +148,4 @@ class SocketProxy {
 }
 
 export { SocketProxy };
-export type { Intercept, InterceptDirection };
+export type { Intercept, InterceptContext, InterceptDirection };

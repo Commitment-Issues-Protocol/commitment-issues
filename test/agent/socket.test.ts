@@ -48,15 +48,14 @@ void describe('agent/socket', () => {
 
   beforeEach(async () => {
     // Create tmp dir and socket paths for testing
-    dir = mkdtempSync(tmpdir());
+    dir = mkdtempSync(path.join('/tmp', tmpdir()));
     proxyPath = path.join(dir, 'proxy.sock');
     upstreamPath = path.join(dir, 'upstream.sock');
 
-    // Create upstream socket that just echos data sent to it
+    // Create upstream socket that doubles the number it receives
     upstreamServer = net.createServer((connection) => {
       connection.on('data', (data: Buffer) => {
-        // Read as int, add 1 to it, respond
-        connection.write(parseInt(data.toString('ascii')).toString(10));
+        connection.write((parseInt(data.toString('ascii')) * 2).toString(10));
       });
     });
     upstreamServer.listen(upstreamPath);
@@ -88,10 +87,10 @@ void describe('agent/socket', () => {
   });
 
   void it('runs data through the intercept callback in each direction', async () => {
-    // Double the number in the request direction
+    // Add 1 to the number in the request direction
     const interceptDoubleRequest: Intercept = (data, direction) => {
       if (direction === 'request') {
-        return Buffer.from(parseInt(data.toString('ascii')).toString(10));
+        return Buffer.from((parseInt(data.toString('ascii')) + 1).toString(10));
       }
       return data;
     };
@@ -101,10 +100,10 @@ void describe('agent/socket', () => {
     client.write('10');
     assert.equal((await waitForData(client)).toString(), '22');
 
-    // Double the number in the response direction
+    // Add 1 to the number in the response direction
     const interceptDoubleResponse: Intercept = (data, direction) => {
       if (direction === 'response') {
-        return Buffer.from(parseInt(data.toString('ascii')).toString(10));
+        return Buffer.from((parseInt(data.toString('ascii')) + 1).toString(10));
       }
       return data;
     };
