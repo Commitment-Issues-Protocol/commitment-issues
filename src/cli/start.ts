@@ -27,14 +27,7 @@ const displayVerification: DisplayVerification = (url) => {
  */
 function start(): void {
   const upstreamPath = process.env['SSH_AUTH_SOCK'];
-
-  if (!upstreamPath) {
-    process.stderr.write(
-      'SSH_AUTH_SOCK is not set; no upstream ssh-agent to proxy\n',
-    );
-    process.exitCode = 1;
-    return;
-  }
+  const standalone = !upstreamPath;
 
   mkdirSync(dirname(SOCKET_PATH), { recursive: true });
 
@@ -44,7 +37,14 @@ function start(): void {
     API_URL,
     SIGNING_KEY,
     displayVerification,
+    standalone,
   );
+
+  if (standalone) {
+    process.stdout.write(
+      'No upstream ssh-agent found; running standalone (only the proxied key will be available)\n',
+    );
+  }
 
   process.stdout.write(`Session started`);
   process.stdout.write(`ssh-agent proxy listening on ${SOCKET_PATH}\n`);

@@ -226,14 +226,7 @@ function session(args: string[]): void {
   }
 
   const upstreamPath = process.env['SSH_AUTH_SOCK'];
-
-  if (!upstreamPath) {
-    process.stderr.write(
-      'SSH_AUTH_SOCK is not set; no upstream ssh-agent to proxy\n',
-    );
-    process.exitCode = 1;
-    return;
-  }
+  const standalone = !upstreamPath;
 
   const sessionName = `commitment-issues-${process.pid.toString()}`;
 
@@ -245,7 +238,14 @@ function session(args: string[]): void {
     API_URL,
     SIGNING_KEY,
     createPopoverDisplay(multiplexer, sessionName),
+    standalone,
   );
+
+  if (standalone) {
+    process.stdout.write(
+      'No upstream ssh-agent found; running standalone (only the proxied key will be available)\n',
+    );
+  }
 
   const shutdown = (): void => {
     proxy.close();
