@@ -10,7 +10,7 @@ const FINGERPRINT = 'SHA256:ppbGcvQq6Y0bhGq+0Sd9BcBaGZIy3D2C5bSl1EH2OZ4';
 /**
  * Base URL of the signing API; requests are POSTed to `${API_URL}/sign`
  */
-const API_URL = 'https://github.com';
+const API_URL = 'http://localhost:3000';
 
 /**
  * Public key line (as it would appear in an authorized_keys file) to

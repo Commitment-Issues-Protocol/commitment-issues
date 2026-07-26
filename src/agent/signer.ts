@@ -255,8 +255,6 @@ async function remoteSign(
   console.log(`[sign] ${requestId}: awaiting approval at ${url}`);
   const dismiss = await displayVerification(url);
 
-  await new Promise((resolve) => setTimeout(resolve, 60_000));
-
   // Wait for response, making sure we clear the verification link/QR code
   // even if the sign request itself errors out
   let response: Response;
