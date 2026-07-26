@@ -65,10 +65,16 @@ function buildExtension(resourceUri: string): AgentkitExtension {
  * Build an {@link AgentkitAuth} that signs requests with the given wallet,
  * proving to a resource server that this agent is backed by a human
  * registered in AgentBook
- * @param privateKey - private key of the wallet registered in AgentBook
+ * @param privateKey - private key of the wallet registered in AgentBook; if
+ * omitted (no wallet imported/generated yet), the returned headers() sends
+ * no `agentkit` header rather than signing
  * @returns an object exposing the headers to attach to outgoing requests
  */
-function createAgentkitAuth(privateKey: `0x${string}`): AgentkitAuth {
+function createAgentkitAuth(privateKey?: `0x${string}`): AgentkitAuth {
+  if (!privateKey) {
+    return { headers: () => Promise.resolve({}) };
+  }
+
   const account = privateKeyToAccount(privateKey);
   const signer: AgentkitSigner = {
     address: account.address,
