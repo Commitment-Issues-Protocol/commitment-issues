@@ -232,7 +232,7 @@ async function remoteSign(
       fingerprint,
       data: dataToSign.toString('base64'),
     }),
-    signal: AbortSignal.timeout(60_000_000), // wait really long
+    signal: AbortSignal.timeout(240_000), // wait 4 minutes
   });
 
   // Explicitly add a catch here so that fetch's error throw doesn't break our session
