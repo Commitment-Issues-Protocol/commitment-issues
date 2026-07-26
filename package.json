@@ -1,0 +1,15 @@
+{
+  "name": "@commitment-issues-protocol/commitment-issues",
+  "version": "0.0.0",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "commitment-issues": "./index.js"
+  },
+  "dependencies": {
+    "@worldcoin/agentkit": "^0.2.0",
+    "qrcode-terminal": "^0.12.0",
+    "viem": "^2.55.8"
+  }
+}
