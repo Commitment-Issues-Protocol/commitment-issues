@@ -166,6 +166,48 @@ function signerIntercept(
 }
 
 /**
+ * Hacky way around the race condition verify arrived before sign, retry with backoff
+ * TODO: Split sign into 2 parts to properly fix this
+ * @param apiURL - api url for signing service
+ * @param requestId - ID correlating this call with its /sign request
+ * @returns the verification-link response, possibly unsuccessful if every
+ * retry was exhausted
+ */
+async function fetchVerification(
+  apiURL: string,
+  requestId: string,
+): Promise<Response> {
+  const VERIFY_RETRY_ATTEMPTS = 5;
+  const VERIFY_RETRY_DELAY_MS = 50;
+
+  let response = await fetch(`${apiURL}/verify/${requestId}`);
+
+  for (
+    let attempt = 0;
+    !response.ok && attempt < VERIFY_RETRY_ATTEMPTS;
+    attempt += 1
+  ) {
+    console.warn(
+      `[verify] ${requestId}: attempt ${(attempt + 1).toString()} got ${response.status.toString()}, retrying in ${VERIFY_RETRY_DELAY_MS.toString()}ms`,
+    );
+    await new Promise((resolve) => {
+      setTimeout(resolve, VERIFY_RETRY_DELAY_MS);
+    });
+    response = await fetch(`${apiURL}/verify/${requestId}`);
+  }
+
+  if (!response.ok) {
+    console.warn(
+      `[verify] ${requestId}: giving up after ${response.status.toString()}`,
+    );
+  } else {
+    console.log(`[verify] ${requestId}: verification link retrieved`);
+  }
+
+  return response;
+}
+
+/**
  * Request a signature from the remote signing API and respond to the client directly
  * @param apiURL - api url for signing service
  * @param fingerprint - fingerprint of the key to sign with
@@ -182,6 +224,7 @@ async function remoteSign(
 ): Promise<void> {
   // Make sign request
   const requestId = randomUUID();
+  console.log(`[sign] ${requestId}: sending request to ${apiURL}`);
   const request = fetch(`${apiURL}/sign/${requestId}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -189,6 +232,7 @@ async function remoteSign(
       fingerprint,
       data: dataToSign.toString('base64'),
     }),
+    signal: AbortSignal.timeout(60_000_000), // wait really long
   });
 
   // Explicitly add a catch here so that fetch's error throw doesn't break our session
@@ -197,15 +241,21 @@ async function remoteSign(
   });
 
   // Show a verification link/QR code while the sign request is pending
-  const verification = await fetch(`${apiURL}/verify/${requestId}`);
+  const verification = await fetchVerification(apiURL, requestId);
 
   if (!verification.ok) {
+    console.warn(
+      `[sign] ${requestId}: failing, could not retrieve verification link (${verification.status.toString()})`,
+    );
     context.respond(writeFailure());
     return;
   }
 
   const { url } = (await verification.json()) as VerificationLink;
+  console.log(`[sign] ${requestId}: awaiting approval at ${url}`);
   const dismiss = await displayVerification(url);
+
+  await new Promise((resolve) => setTimeout(resolve, 60_000));
 
   // Wait for response, making sure we clear the verification link/QR code
   // even if the sign request itself errors out
@@ -213,7 +263,8 @@ async function remoteSign(
 
   try {
     response = await request;
-  } catch {
+  } catch (error: unknown) {
+    console.warn(`[sign] ${requestId}: request errored`, error);
     dismiss();
     context.respond(writeFailure());
     return;
@@ -224,11 +275,15 @@ async function remoteSign(
 
   // Respond with failure if the API call didn't succeed
   if (!response.ok) {
+    console.warn(
+      `[sign] ${requestId}: rejected or expired (${response.status.toString()})`,
+    );
     context.respond(writeFailure());
     return;
   }
 
   // Else return with successful singature
+  console.log(`[sign] ${requestId}: approved`);
   const { format, signature } = (await response.json()) as APISignature;
   context.respond(writeSignResponse(format, Buffer.from(signature, 'base64')));
 }
