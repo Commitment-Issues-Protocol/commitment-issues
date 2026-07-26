@@ -6,11 +6,19 @@ import { basename, dirname, join } from 'node:path';
 
 import qrcodeTerminal from 'qrcode-terminal';
 
+import { createAgentkitAuth } from '../agent/agentkit-auth.ts';
 import type { DisplayVerification } from '../agent/signer.ts';
 import { signerIntercept } from '../agent/signer.ts';
 import { SocketProxy } from '../agent/socket.ts';
 
-import { API_URL, FINGERPRINT, SIGNING_KEY, SOCKET_PATH } from './config.ts';
+import {
+  API_URL,
+  FINGERPRINT,
+  SIGNING_KEY,
+  SOCKET_PATH,
+  WALLET_KEY_PATH,
+  getAgentWalletPrivateKey,
+} from './config.ts';
 import { buildProxyEnv } from './env.ts';
 
 /**
@@ -284,7 +292,17 @@ function session(args: string[]): void {
 
   const sessionName = `commitment-issues-${process.pid.toString()}`;
 
+  const privateKey = getAgentWalletPrivateKey();
+
+  if (!privateKey) {
+    process.stdout.write(
+      `No wallet private key found at ${WALLET_KEY_PATH}; sign requests won't be attributable to a human-backed agent until you run "commitment-issues create-agent" or "commitment-issues import-key <private-key>"\n`,
+    );
+  }
+
   mkdirSync(dirname(SOCKET_PATH), { recursive: true });
+
+  const agentkitAuth = createAgentkitAuth(privateKey);
 
   const proxy = new SocketProxy(SOCKET_PATH, upstreamPath);
   proxy.intercept = signerIntercept(
@@ -293,6 +311,7 @@ function session(args: string[]): void {
     SIGNING_KEY,
     createPopoverDisplay(multiplexer, sessionName),
     standalone,
+    agentkitAuth,
   );
 
   if (standalone) {

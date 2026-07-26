@@ -1,5 +1,6 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /**
  * SHA256 fingerprint (OpenSSH display format) of the key whose sign
@@ -37,11 +38,50 @@ const COMMITTER_EMAIL =
  */
 const SOCKET_PATH = join(homedir(), '.commitment-issues', 'agent.sock');
 
+/**
+ * Path to the file holding the private key of the EVM wallet registered in
+ * AgentBook. Unlike the values above, this is a secret specific to whoever
+ * is running the proxy rather than shared protocol config, so it's read
+ * from a file on disk instead of hardcoded
+ */
+const WALLET_KEY_PATH = join(homedir(), '.commitment-issues', 'wallet.key');
+
+/**
+ * Read the EVM wallet private key used to prove sign requests come from a
+ * human-backed agent, if one has been imported or generated yet
+ * @returns the private key, ready to build an AgentkitAuth from, or
+ * undefined if {@link WALLET_KEY_PATH} doesn't hold one yet
+ */
+function getAgentWalletPrivateKey(): `0x${string}` | undefined {
+  let key: string;
+
+  try {
+    key = readFileSync(WALLET_KEY_PATH, 'utf8').trim();
+  } catch {
+    return undefined;
+  }
+
+  return key ? (key as `0x${string}`) : undefined;
+}
+
+/**
+ * Save the EVM wallet private key to {@link WALLET_KEY_PATH}, creating the
+ * parent directory if needed and restricting the file to the current user
+ * @param privateKey - private key to save
+ */
+function writeAgentWalletPrivateKey(privateKey: `0x${string}`): void {
+  mkdirSync(dirname(WALLET_KEY_PATH), { recursive: true, mode: 0o700 });
+  writeFileSync(WALLET_KEY_PATH, `${privateKey}\n`, { mode: 0o600 });
+}
+
 export {
   API_URL,
   COMMITTER_EMAIL,
   COMMITTER_NAME,
   FINGERPRINT,
+  getAgentWalletPrivateKey,
   SIGNING_KEY,
   SOCKET_PATH,
+  WALLET_KEY_PATH,
+  writeAgentWalletPrivateKey,
 };
