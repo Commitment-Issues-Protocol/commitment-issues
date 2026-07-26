@@ -4,6 +4,8 @@ SSH Agent for using Commitment Issues
 
 ## Install
 
+`tmux` is a pre-requisite, while GNU `screen` works it is a considerably worse experience.
+
 ```
 npm install -g github:Commitment-Issues-Protocol/commitment-issues#build
 ```
