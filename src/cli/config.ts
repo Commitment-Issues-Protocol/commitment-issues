@@ -10,7 +10,7 @@ const FINGERPRINT = 'SHA256:ppbGcvQq6Y0bhGq+0Sd9BcBaGZIy3D2C5bSl1EH2OZ4';
 /**
  * Base URL of the signing API; requests are POSTed to `${API_URL}/sign`
  */
-const API_URL = 'https://notarealdomain';
+const API_URL = 'https://github.com';
 
 /**
  * Public key line (as it would appear in an authorized_keys file) to
@@ -26,8 +26,22 @@ const SIGNING_KEY =
 const COMMITTER_NAME = 'Reviewed By Human';
 
 /**
+ * Committer email to record on commits made through the proxy, leaving the
+ * author identity untouched
+ */
+const COMMITTER_EMAIL =
+  '309237263+commitment-issues-protocol-author@users.noreply.github.com';
+
+/**
  * Path the proxy's own unix socket listens on
  */
 const SOCKET_PATH = join(homedir(), '.commitment-issues', 'agent.sock');
 
-export { API_URL, COMMITTER_NAME, FINGERPRINT, SIGNING_KEY, SOCKET_PATH };
+export {
+  API_URL,
+  COMMITTER_EMAIL,
+  COMMITTER_NAME,
+  FINGERPRINT,
+  SIGNING_KEY,
+  SOCKET_PATH,
+};
