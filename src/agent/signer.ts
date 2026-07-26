@@ -170,41 +170,47 @@ function signerIntercept(
  * TODO: Split sign into 2 parts to properly fix this
  * @param apiURL - api url for signing service
  * @param requestId - ID correlating this call with its /sign request
- * @returns the verification-link response, possibly unsuccessful if every
- * retry was exhausted
+ * @returns the verification link, or null if every retry was exhausted
+ * without ever getting a successful response containing a url
  */
 async function fetchVerification(
   apiURL: string,
   requestId: string,
-): Promise<Response> {
+): Promise<VerificationLink | null> {
   const VERIFY_RETRY_ATTEMPTS = 5;
-  const VERIFY_RETRY_DELAY_MS = 50;
+  const VERIFY_RETRY_DELAY_MS = 500;
 
-  let response = await fetch(`${apiURL}/verify/${requestId}`);
+  for (let attempt = 0; attempt <= VERIFY_RETRY_ATTEMPTS; attempt += 1) {
+    const response = await fetch(`${apiURL}/verify/${requestId}`);
 
-  for (
-    let attempt = 0;
-    !response.ok && attempt < VERIFY_RETRY_ATTEMPTS;
-    attempt += 1
-  ) {
-    console.warn(
-      `[verify] ${requestId}: attempt ${(attempt + 1).toString()} got ${response.status.toString()}, retrying in ${VERIFY_RETRY_DELAY_MS.toString()}ms`,
-    );
-    await new Promise((resolve) => {
-      setTimeout(resolve, VERIFY_RETRY_DELAY_MS);
-    });
-    response = await fetch(`${apiURL}/verify/${requestId}`);
+    if (response.ok) {
+      const body = (await response.json()) as Partial<VerificationLink>;
+
+      if (body.url) {
+        console.log(`[verify] ${requestId}: verification link retrieved`);
+        return { url: body.url };
+      }
+
+      console.warn(
+        `[verify] ${requestId}: attempt ${(attempt + 1).toString()} got ok response with no url, retrying in ${VERIFY_RETRY_DELAY_MS.toString()}ms`,
+      );
+    } else {
+      console.warn(
+        `[verify] ${requestId}: attempt ${(attempt + 1).toString()} got ${response.status.toString()}, retrying in ${VERIFY_RETRY_DELAY_MS.toString()}ms`,
+      );
+    }
+
+    if (attempt < VERIFY_RETRY_ATTEMPTS) {
+      await new Promise((resolve) => {
+        setTimeout(resolve, VERIFY_RETRY_DELAY_MS);
+      });
+    }
   }
 
-  if (!response.ok) {
-    console.warn(
-      `[verify] ${requestId}: giving up after ${response.status.toString()}`,
-    );
-  } else {
-    console.log(`[verify] ${requestId}: verification link retrieved`);
-  }
-
-  return response;
+  console.warn(
+    `[verify] ${requestId}: giving up, no verification link retrieved`,
+  );
+  return null;
 }
 
 /**
@@ -243,15 +249,15 @@ async function remoteSign(
   // Show a verification link/QR code while the sign request is pending
   const verification = await fetchVerification(apiURL, requestId);
 
-  if (!verification.ok) {
+  if (!verification) {
     console.warn(
-      `[sign] ${requestId}: failing, could not retrieve verification link (${verification.status.toString()})`,
+      `[sign] ${requestId}: failing, could not retrieve verification link`,
     );
     context.respond(writeFailure());
     return;
   }
 
-  const { url } = (await verification.json()) as VerificationLink;
+  const { url } = verification;
   console.log(`[sign] ${requestId}: awaiting approval at ${url}`);
   const dismiss = await displayVerification(url);
 
