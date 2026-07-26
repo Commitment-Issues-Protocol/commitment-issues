@@ -5,7 +5,7 @@ SSH Agent for using Commitment Issues
 ## Install
 
 ```
-npm install -g github:Commitment-Issues-Protocol/ssh-agent#build
+npm install -g github:Commitment-Issues-Protocol/commitment-issues#build
 ```
 
 This provides the `commitment-issues` command.
