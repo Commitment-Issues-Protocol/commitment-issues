@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import type { AgentkitAuth } from '../../src/agent/agentkit-auth.ts';
 import type { DisplayVerification } from '../../src/agent/signer.ts';
 import { signerIntercept } from '../../src/agent/signer.ts';
 import type { InterceptContext } from '../../src/agent/socket.ts';
@@ -140,6 +141,10 @@ const noopDisplayVerification: DisplayVerification = () => () => {
   /* empty */
 };
 
+const stubAgentkitAuth: AgentkitAuth = {
+  headers: () => Promise.resolve({ agentkit: 'stub-agentkit-header' }),
+};
+
 const targetKeyBlob = Buffer.from('the-target-key');
 const targetFingerprint = computeFingerprint(targetKeyBlob);
 const targetSigningKeyLine = `ssh-ed25519 ${targetKeyBlob.toString('base64')}`;
@@ -159,6 +164,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       noopDisplayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context, responses } = createRecordingContext();
     const message = frame(Buffer.from([SSH_AGENT_SIGN_RESPONSE]));
@@ -176,6 +182,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       noopDisplayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context } = createRecordingContext();
     const message = identitiesAnswer([
@@ -197,6 +204,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       noopDisplayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context } = createRecordingContext();
     const message = identitiesAnswer([]);
@@ -227,6 +235,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       noopDisplayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context, responses } = createRecordingContext();
     const message = frame(Buffer.from([SSH_AGENTC_REQUEST_IDENTITIES]));
@@ -244,6 +253,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       noopDisplayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(otherKeyBlob, Buffer.from('data'));
@@ -257,6 +267,7 @@ void describe('agent/signer', () => {
   void it('redirects a matching sign request to the HTTP API', async () => {
     let capturedUrl: string | undefined;
     let capturedBody: unknown;
+    let capturedAgentkitHeader: string | null | undefined;
 
     globalThis.fetch = ((input: string, init?: RequestInit) => {
       // Verification-link GET request; no body to capture
@@ -270,6 +281,7 @@ void describe('agent/signer', () => {
 
       capturedUrl = input;
       capturedBody = JSON.parse(init.body as string);
+      capturedAgentkitHeader = new Headers(init.headers).get('agentkit');
 
       return Promise.resolve(
         new Response(
@@ -289,6 +301,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       displayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context, responses } = createRecordingContext();
     const dataToSign = Buffer.from('data-to-sign');
@@ -305,6 +318,7 @@ void describe('agent/signer', () => {
       fingerprint: targetFingerprint,
       data: dataToSign.toString('base64'),
     });
+    assert.equal(capturedAgentkitHeader, 'stub-agentkit-header');
     assert.deepEqual(urls, ['https://notarealdomain/v/1']);
 
     assert.equal(responses.length, 1);
@@ -323,6 +337,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       noopDisplayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(targetKeyBlob, Buffer.from('data'));
@@ -356,6 +371,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       noopDisplayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context, responses } = createRecordingContext();
     const message = signRequest(targetKeyBlob, Buffer.from('data-to-sign'));
@@ -396,6 +412,7 @@ void describe('agent/signer', () => {
       targetSigningKeyLine,
       noopDisplayVerification,
       false,
+      stubAgentkitAuth,
     );
     const { context, responses } = createRecordingContext();
     const matching = signRequest(targetKeyBlob, Buffer.from('data'));
@@ -419,6 +436,7 @@ void describe('agent/signer', () => {
         targetSigningKeyLine,
         noopDisplayVerification,
         true,
+        stubAgentkitAuth,
       );
       const { context, responses } = createRecordingContext();
       const message = frame(Buffer.from([SSH_AGENTC_REQUEST_IDENTITIES]));
@@ -438,6 +456,7 @@ void describe('agent/signer', () => {
         targetSigningKeyLine,
         noopDisplayVerification,
         true,
+        stubAgentkitAuth,
       );
       const { context, responses } = createRecordingContext();
       const message = signRequest(otherKeyBlob, Buffer.from('data'));
@@ -456,6 +475,7 @@ void describe('agent/signer', () => {
         targetSigningKeyLine,
         noopDisplayVerification,
         true,
+        stubAgentkitAuth,
       );
       const { context, responses } = createRecordingContext();
       const message = frame(Buffer.from([99]));
@@ -489,6 +509,7 @@ void describe('agent/signer', () => {
         targetSigningKeyLine,
         noopDisplayVerification,
         true,
+        stubAgentkitAuth,
       );
       const { context, responses } = createRecordingContext();
       const message = signRequest(targetKeyBlob, Buffer.from('data'));

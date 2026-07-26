@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import type { AgentkitAuth } from './agentkit-auth.ts';
 import type { InterceptContext } from './socket.ts';
 import {
   SSH_AGENTC_REQUEST_IDENTITIES,
@@ -58,6 +59,8 @@ type DisplayVerification = (url: string) => Promise<() => void> | (() => void);
  * @param standalone - true when there's no upstream agent to fall back to;
  * identity listings and non-matching sign requests are answered directly
  * instead of being forwarded (every other message type just fails)
+ * @param agentkitAuth - signs outgoing sign requests to prove to the signing
+ * service that this agent is backed by a human registered in AgentBook
  * @returns signed, or error
  */
 function signerIntercept(
@@ -66,6 +69,7 @@ function signerIntercept(
   signingKey: string,
   displayVerification: DisplayVerification,
   standalone: boolean,
+  agentkitAuth: AgentkitAuth,
 ) {
   // Store bytes in buffer to concat messages arriving in multiple chunks (per direction)
   let requestBuffered: Buffer = Buffer.alloc(0);
@@ -131,6 +135,7 @@ function signerIntercept(
             dataToSign,
             context,
             displayVerification,
+            agentkitAuth,
           );
         } else if (standalone) {
           context.respond(writeFailure());
@@ -220,6 +225,8 @@ async function fetchVerification(
  * @param dataToSign - raw data the client wants signed
  * @param context - intercept context used to respond directly to the client
  * @param displayVerification - shows the verification URL to the human approving the request
+ * @param agentkitAuth - signs the request to prove it comes from a
+ * human-backed agent; the signing service rejects sign requests without it
  */
 async function remoteSign(
   apiURL: string,
@@ -227,13 +234,18 @@ async function remoteSign(
   dataToSign: Buffer,
   context: InterceptContext,
   displayVerification: DisplayVerification,
+  agentkitAuth: AgentkitAuth,
 ): Promise<void> {
   // Make sign request
   const requestId = randomUUID();
+  const resourceUri = `${apiURL}/sign/${requestId}`;
   console.log(`[sign] ${requestId}: sending request to ${apiURL}`);
-  const request = fetch(`${apiURL}/sign/${requestId}`, {
+  const request = fetch(resourceUri, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(await agentkitAuth.headers(resourceUri)),
+    },
     body: JSON.stringify({
       fingerprint,
       data: dataToSign.toString('base64'),
